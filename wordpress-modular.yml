@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # MySQL Database Service
+  db:
+    image: mysql:8.0
+    volumes:
+      - db_data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: example_root_password
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress_user
+      MYSQL_PASSWORD: wordpress_password
+
+  # PHP Service
+  php:
+    image: php:7.4-apache
+    volumes:
+      - wordpress_data:/var/www/html
+    depends_on:
+      - db
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wordpress_user
+      WORDPRESS_DB_PASSWORD: wordpress_password
+      WORDPRESS_DB_NAME: wordpress
+    user: "${PHP_USER:-www-data}"
+
+  # Web Server Service (Nginx in this example)
+  webserver:
+    image: nginx:latest
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - php
+    environment:
+      VIRTUAL_HOST: yourdomain.com
+    ports:
+      - "80:80"
+    user: "${WEB_USER:-nginx}"
+    networks:
+      - proxy
+
+  # nginx-proxy
+  proxy:
+    image: jwilder/nginx-proxy
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    environment:
+      DEFAULT_HOST: yourdomain.com
+    networks:
+      - proxy
+
+  # letsencrypt-companion
+  letsencrypt-companion:
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    container_name: letsencrypt-companion
+    volumes:
+      - ./certs:/etc/nginx/certs:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    volumes_from:
+      - proxy
+    depends_on:
+      - proxy
+    networks:
+      - proxy
+    environment:
+      NGINX_PROXY_CONTAINER: "nginx-proxy"
+
+  # PHPMyAdmin Service
+  phpmyadmin:
+    depends_on:
+      - db
+    image: phpmyadmin/phpmyadmin
+    ports:
+      - "8181:80"
+    environment:
+      PMA_HOST: db
+      MYSQL_ROOT_PASSWORD: example_root_password
+    user: "${PHPMYADMIN_USER:-www-data}"
+
+networks:
+  proxy:
+    external: true
+
+volumes:
+  db_data:
+  wordpress_data:
